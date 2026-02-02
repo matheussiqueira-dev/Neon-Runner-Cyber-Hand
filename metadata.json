@@ -1,0 +1,7 @@
+{
+  "name": "Neon Runner: Cyber Hand",
+  "description": "A cyberpunk infinite runner controlled by hand gestures. Your hand is visualized as a futuristic cybernetic skeleton.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
