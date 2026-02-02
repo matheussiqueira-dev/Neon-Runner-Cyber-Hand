@@ -1,4 +1,4 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { ObstacleData, CoinData, Lane } from '../types';
 import * as THREE from 'three';
@@ -40,7 +40,7 @@ export const Obstacle: React.FC<{ data: ObstacleData }> = ({ data }) => {
     const xPos = data.lane * LANE_WIDTH;
     
     // Different visuals based on type
-    const color = data.type === 'pit' ? '#ff0000' : '#ff4400';
+    const color = data.type === 'pit' ? '#ff0000' : (data.type === 'tall' ? '#9333ea' : '#ff4400');
     
     if (data.type === 'pit') {
         return (
@@ -53,6 +53,25 @@ export const Obstacle: React.FC<{ data: ObstacleData }> = ({ data }) => {
                 </lineSegments>
              </mesh>
         )
+    }
+
+    if (data.type === 'tall') {
+        return (
+            <group position={[xPos, 0, data.z]}>
+                <mesh position={[0, 1.8, 0]} castShadow>
+                    <boxGeometry args={[1.6, 3.6, 1]} />
+                    <meshStandardMaterial 
+                        color={color} 
+                        emissive="#a855f7" 
+                        emissiveIntensity={0.7}
+                    />
+                </mesh>
+                <mesh position={[0, 1.8, 0]}>
+                    <boxGeometry args={[1.7, 3.7, 1.1]} />
+                    <meshBasicMaterial color="#e9d5ff" wireframe transparent opacity={0.25} />
+                </mesh>
+            </group>
+        );
     }
 
     return (

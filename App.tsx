@@ -16,7 +16,12 @@ const App: React.FC = () => {
 
       {/* 3D Scene */}
       <div className="absolute inset-0 z-10">
-        <Canvas shadows camera={{ position: [0, 5, 6], fov: 60 }}>
+        <Canvas
+          shadows
+          dpr={[1, 1.5]}
+          camera={{ position: [0, 5, 6], fov: 60 }}
+          performance={{ min: 0.6 }}
+        >
            <Suspense fallback={null}>
               <GameScene />
            </Suspense>

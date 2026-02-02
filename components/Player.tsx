@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGameStore } from '../store';
 import { Lane, GameStatus } from '../types';
@@ -11,7 +11,12 @@ const SLIDE_DURATION = 0.8;
 
 export const Player: React.FC = () => {
   const meshRef = useRef<THREE.Group>(null);
-  const { lane, isJumping, isSliding, setJumping, setSliding, status } = useGameStore();
+  const lane = useGameStore(s => s.lane);
+  const isJumping = useGameStore(s => s.isJumping);
+  const isSliding = useGameStore(s => s.isSliding);
+  const setJumping = useGameStore(s => s.setJumping);
+  const setSliding = useGameStore(s => s.setSliding);
+  const status = useGameStore(s => s.status);
   
   // Animation state
   const jumpTime = useRef(0);

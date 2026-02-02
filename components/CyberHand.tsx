@@ -7,34 +7,44 @@ export const CyberHand: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [lastGesture, setLastGesture] = useState<string>("");
   const requestRef = useRef<number>();
+  const gestureTimeoutRef = useRef<number | null>(null);
+  const lastDetectTimeRef = useRef(0);
+  const lastResultsRef = useRef<any[] | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   
-  // We don't destructure actions that we use inside the loop to avoid dependency issues,
-  // instead we use the store directly or stable references.
-  const gameStatus = useGameStore(s => s.status);
+  const DETECTION_INTERVAL_MS = 40; // ~25 FPS for detection
 
   useEffect(() => {
     const setupCamera = async () => {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert("Camera not supported/permitted");
+        setError("Camera not supported/permitted");
         return;
       }
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 640, height: 480 }
+          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
         });
         
         if (videoRef.current) {
+          streamRef.current = stream;
           videoRef.current.srcObject = stream;
           videoRef.current.addEventListener('loadeddata', async () => {
-            await initializeHandLandmarker();
-            setIsLoaded(true);
-          });
+            try {
+              await initializeHandLandmarker();
+              setIsLoaded(true);
+            } catch (initErr) {
+              console.error("Error initializing hand landmarker:", initErr);
+              setError("Failed to initialize hand tracking");
+            }
+          }, { once: true });
         }
       } catch (err) {
         console.error("Error accessing camera:", err);
+        setError("Camera access denied");
       }
     };
 
@@ -42,6 +52,10 @@ export const CyberHand: React.FC = () => {
 
     return () => {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
+      if (gestureTimeoutRef.current) window.clearTimeout(gestureTimeoutRef.current);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
     };
   }, []);
 
@@ -107,25 +121,30 @@ export const CyberHand: React.FC = () => {
     });
   };
 
-  const tick = () => {
+  const tick = (time: number) => {
     if (videoRef.current && canvasRef.current && isLoaded) {
-      const results = detectHands(videoRef.current, Date.now());
+      if (videoRef.current.readyState >= 2 && (time - lastDetectTimeRef.current) >= DETECTION_INTERVAL_MS) {
+        const results = detectHands(videoRef.current, Date.now());
+        lastDetectTimeRef.current = time;
+        lastResultsRef.current = results && results.landmarks.length > 0 ? results.landmarks : null;
+      }
       
       const ctx = canvasRef.current.getContext('2d');
       if (ctx) {
-        if (results && results.landmarks.length > 0) {
-           drawCyberHand(ctx, results.landmarks);
+        if (lastResultsRef.current && lastResultsRef.current.length > 0) {
+           drawCyberHand(ctx, lastResultsRef.current);
            
            // CRITICAL FIX: Access store state directly to avoid stale closures in loop
            const currentStatus = useGameStore.getState().status;
            
            if (currentStatus === GameStatus.PLAYING) {
-             const gesture = analyzeGesture(results.landmarks);
+             const gesture = analyzeGesture(lastResultsRef.current);
              
              if (gesture !== GestureType.NONE) {
                  setLastGesture(gesture);
                  // Clear visual feedback after a moment
-                 setTimeout(() => setLastGesture(""), 1000);
+                 if (gestureTimeoutRef.current) window.clearTimeout(gestureTimeoutRef.current);
+                 gestureTimeoutRef.current = window.setTimeout(() => setLastGesture(""), 800);
 
                  const state = useGameStore.getState();
                  
@@ -185,9 +204,14 @@ export const CyberHand: React.FC = () => {
           </div>
       )}
 
-      {!isLoaded && (
+      {!isLoaded && !error && (
         <div className="absolute inset-0 flex items-center justify-center text-cyan-400 text-xs font-mono animate-pulse">
           INIT_SENSORS...
+        </div>
+      )}
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center text-red-400 text-xs font-mono">
+          {error}
         </div>
       )}
       <div className="absolute bottom-0 left-0 w-full bg-cyan-900/80 text-[10px] text-cyan-100 px-2 py-1 font-mono flex justify-between">

@@ -22,7 +22,7 @@ export const useGameStore = create<GameState>((set) => ({
   setJumping: (isJumping) => set({ isJumping }),
   setSliding: (isSliding) => set({ isSliding }),
 
-  increaseSpeed: () => set((state) => ({ speed: state.speed + 0.005 })), // Gradual increase
+  increaseSpeed: () => set((state) => ({ speed: Math.min(state.speed + 0.01, 18) })), // Gradual increase with cap
 
   resetGame: () => set({
     status: GameStatus.PLAYING,

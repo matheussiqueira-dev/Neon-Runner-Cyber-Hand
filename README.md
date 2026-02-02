@@ -33,12 +33,14 @@ Um infinite runner cyberpunk controlado por gestos, com visualização da mão e
 - **Pular:** mão na parte superior do quadro
 - **Deslizar:** mão na parte inferior do quadro
 - **Mover:** swipe para esquerda/direita
+- **Obstáculo alto:** deslize para passar
 
 ## Estrutura do Projeto
 
 - `components/` componentes visuais e cena 3D
 - `services/gestureService.ts` lógica de detecção de gestos
 - `store.ts` estado global do jogo
+- `public/models/` modelos locais (ex.: `hand_landmarker.task`)
 
 ## Licença
 

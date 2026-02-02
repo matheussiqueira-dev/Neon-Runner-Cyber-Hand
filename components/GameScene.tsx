@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Player } from './Player';
 import { FloorSegment, Obstacle, Coin } from './WorldObjects';
@@ -8,10 +8,17 @@ import * as THREE from 'three';
 
 const SEGMENT_LENGTH = 20;
 const VISIBLE_SEGMENTS = 6;
-const LANE_WIDTH = 2.5;
 
 export const GameScene: React.FC = () => {
-  const { status, speed, score, addScore, setStatus, resetGame, increaseSpeed, isJumping, lane: playerLane } = useGameStore();
+  const status = useGameStore(s => s.status);
+  const speed = useGameStore(s => s.speed);
+  const score = useGameStore(s => s.score);
+  const addScore = useGameStore(s => s.addScore);
+  const setStatus = useGameStore(s => s.setStatus);
+  const increaseSpeed = useGameStore(s => s.increaseSpeed);
+  const isJumping = useGameStore(s => s.isJumping);
+  const isSliding = useGameStore(s => s.isSliding);
+  const playerLane = useGameStore(s => s.lane);
   
   // World State
   const [segments, setSegments] = useState<number[]>([0, 1, 2, 3, 4, 5]);
@@ -29,6 +36,7 @@ export const GameScene: React.FC = () => {
   useEffect(() => {
     if (status === GameStatus.PLAYING && score === 0) {
         playerZ.current = 0;
+        if (worldRef.current) worldRef.current.position.set(0, 0, 0);
         setSegments([0, 1, 2, 3, 4, 5]);
         setObstacles([]);
         setCoins([]);
@@ -43,9 +51,10 @@ export const GameScene: React.FC = () => {
 
     // Simple procedural generation
     // Random chance for obstacle
-    if (Math.random() > 0.3 && segmentIndex > 2) { // Don't spawn at start
+    if (Math.random() > 0.35 && segmentIndex > 2) { // Don't spawn at start
         const lane = Math.floor(Math.random() * 3) - 1; // -1, 0, 1
-        const type = Math.random() > 0.8 ? 'pit' : 'wall';
+        const roll = Math.random();
+        const type: ObstacleData["type"] = roll > 0.85 ? 'pit' : (roll > 0.7 ? 'tall' : 'wall');
         newObstacles.push({
             id: `obs-${segmentIndex}-${Date.now()}`,
             z: -(zBase + Math.random() * SEGMENT_LENGTH),
@@ -73,40 +82,6 @@ export const GameScene: React.FC = () => {
     return { newObstacles, newCoins };
   };
 
-  useFrame((state, delta) => {
-    if (status !== GameStatus.PLAYING) return;
-
-    // Move Player Forward (visually, we move world backward or player forward, 
-    // here we move player forward in negative Z to match Threejs convention of "into screen")
-    // Actually, usually camera looks down -Z. So objects are at negative Z.
-    // Let's hold Player at 0,0,0 and move Objects towards +Z.
-    
-    const distanceMoved = speedRef.current * delta;
-    playerZ.current += distanceMoved;
-
-    // Update Objects Z Position relative to player being stationary?
-    // Optimization: It's often better to move the "Camera/Player container" through a static world for Physics
-    // But for infinite runners without physics engine, moving objects +Z is easier to manage array.
-    // Let's TRY moving objects +Z.
-    
-    setSegments(prev => {
-       const firstSegZ = (prev[0] * SEGMENT_LENGTH); 
-       // If the first segment has moved passed the camera (camera at 0, segment ends at +10)
-       // Relative position calculation is tricky. 
-       
-       // Alternative: Player stays at 0. World moves +Z.
-       // Obstacle Z starts at -50. Moves to +10.
-       return prev;
-    });
-
-    // Let's implement the "Player stays at 0, World moves +Z" approach.
-    // We need to mutate the obstacles positions in the state or ref? 
-    // Mutating state every frame is bad for React.
-    
-    // APPROACH 2: Player moves -Z (forward). Camera follows.
-    // Player Z decreases.
-  });
-
   // REVISED APPROACH: Player is static (0,0,0). World Group moves +Z.
   // Actually, standard R3F runner: Everything moves towards camera.
   const worldRef = useRef<THREE.Group>(null);
@@ -133,12 +108,12 @@ export const GameScene: React.FC = () => {
              if (obs.lane === playerLane) {
                  // Check vertical collision (Jump over pits?)
                  if (obs.type === 'pit') {
-                      if (!isJumping) {
-                          setStatus(GameStatus.GAME_OVER);
-                      }
+                      if (!isJumping) setStatus(GameStatus.GAME_OVER);
+                 } else if (obs.type === 'tall') {
+                      if (!isSliding) setStatus(GameStatus.GAME_OVER);
                  } else {
-                     // Wall - Game Over
-                     setStatus(GameStatus.GAME_OVER);
+                     // Wall - can be avoided by jumping
+                     if (!isJumping) setStatus(GameStatus.GAME_OVER);
                  }
              }
          }

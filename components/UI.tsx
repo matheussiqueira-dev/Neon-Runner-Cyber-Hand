@@ -3,7 +3,9 @@ import { useGameStore } from '../store';
 import { GameStatus } from '../types';
 
 export const UI: React.FC = () => {
-  const { status, score, resetGame } = useGameStore();
+  const status = useGameStore(s => s.status);
+  const score = useGameStore(s => s.score);
+  const resetGame = useGameStore(s => s.resetGame);
 
   if (status === GameStatus.IDLE) {
     return (
@@ -15,9 +17,9 @@ export const UI: React.FC = () => {
             <p>SYSTEM_CHECK: CAMERA REQUIRED</p>
             <p className="text-sm text-gray-400">Controls:</p>
             <ul className="text-left text-sm space-y-1 bg-gray-900 p-4 rounded border border-gray-700">
-                <li>👋 <span className="text-white font-bold">Swipe Hand:</span> Change Lane</li>
-                <li>👆 <span className="text-white font-bold">Hand Up:</span> Jump</li>
-                <li>👇 <span className="text-white font-bold">Hand Down:</span> Slide</li>
+                <li><span className="text-white font-bold">Swipe Hand:</span> Change lane</li>
+                <li><span className="text-white font-bold">Hand Up:</span> Jump</li>
+                <li><span className="text-white font-bold">Hand Down:</span> Slide</li>
             </ul>
         </div>
         <button 

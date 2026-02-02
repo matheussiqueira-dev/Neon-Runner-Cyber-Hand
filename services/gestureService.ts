@@ -33,15 +33,18 @@ export enum GestureType {
 }
 
 // Configuration
-const HISTORY_SIZE = 8; 
-const COOLDOWN_MS = 450;
-const SWIPE_THRESHOLD = 0.15; // Movement must be 15% of screen width
+const HISTORY_SIZE = 10; 
+const COOLDOWN_MS = 350;
+const SWIPE_THRESHOLD = 0.12; // Movement must be 12% of screen width
 const DOMINANT_AXIS_FACTOR = 2.0; // Horizontal move must be 2x larger than vertical
 const MAX_VERTICAL_DRIFT = 0.1; // Max allowed vertical movement during a swipe
 const SWIPE_TIME_LIMIT = 300; // ms to complete the motion
+const SWIPE_MIN_SPEED = 0.0006; // normalized units per ms
 
 const JUMP_ZONE_Y = 0.25; // Top 25%
 const SLIDE_ZONE_Y = 0.75; // Bottom 25%
+const ZONE_HOLD_MS = 120; // require hold to reduce false positives
+const ZONE_STABILITY_MAX_DRIFT = 0.08;
 
 // State
 const history: { x: number; y: number; time: number }[] = [];
@@ -49,6 +52,9 @@ let lastGestureTime = 0;
 let smoothX = 0.5;
 let smoothY = 0.5;
 const ALPHA = 0.3; // Smoothing factor
+let highZoneStart: number | null = null;
+let lowZoneStart: number | null = null;
+let lastZoneY = 0.5;
 
 export const analyzeGesture = (landmarks: any[]): GestureType => {
   const now = Date.now();
@@ -58,12 +64,13 @@ export const analyzeGesture = (landmarks: any[]): GestureType => {
 
   if (!landmarks || landmarks.length === 0) {
     history.length = 0;
+    highZoneStart = null;
+    lowZoneStart = null;
     return GestureType.NONE;
   }
 
   const hand = landmarks[0];
   const wrist = hand[0];
-  const middleTip = hand[12]; // Use tip for more range
   const middleMcp = hand[9];
   
   // Calculate Center (Average of Wrist and Middle Finger)
@@ -89,17 +96,35 @@ export const analyzeGesture = (landmarks: any[]): GestureType => {
   // 1. Static Pose Detection (Jump / Slide) takes priority
   // Jump: Hand High
   if (smoothY < JUMP_ZONE_Y) {
-    lastGestureTime = now;
-    history.length = 0; // Clear history to prevent swipe after jump
-    return GestureType.JUMP;
+    if (highZoneStart === null) {
+      highZoneStart = now;
+      lastZoneY = smoothY;
+    } else if (Math.abs(smoothY - lastZoneY) <= ZONE_STABILITY_MAX_DRIFT && (now - highZoneStart) >= ZONE_HOLD_MS) {
+      lastGestureTime = now;
+      history.length = 0; // Clear history to prevent swipe after jump
+      highZoneStart = null;
+      lowZoneStart = null;
+      return GestureType.JUMP;
+    }
+    return GestureType.NONE;
   }
+  highZoneStart = null;
 
   // Slide: Hand Low
   if (smoothY > SLIDE_ZONE_Y) {
-    lastGestureTime = now;
-    history.length = 0;
-    return GestureType.SLIDE;
+    if (lowZoneStart === null) {
+      lowZoneStart = now;
+      lastZoneY = smoothY;
+    } else if (Math.abs(smoothY - lastZoneY) <= ZONE_STABILITY_MAX_DRIFT && (now - lowZoneStart) >= ZONE_HOLD_MS) {
+      lastGestureTime = now;
+      history.length = 0;
+      highZoneStart = null;
+      lowZoneStart = null;
+      return GestureType.SLIDE;
+    }
+    return GestureType.NONE;
   }
+  lowZoneStart = null;
 
   // 2. Dynamic Swipe Detection
   // We need enough history to judge velocity
@@ -120,9 +145,10 @@ export const analyzeGesture = (landmarks: any[]): GestureType => {
   
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
+  const speed = timeDiff > 0 ? absDx / timeDiff : 0;
 
   // Check if movement is fast enough and long enough
-  if (absDx > SWIPE_THRESHOLD) {
+  if (absDx > SWIPE_THRESHOLD && speed >= SWIPE_MIN_SPEED) {
       // DOMINANT AXIS CHECK:
       // 1. Horizontal movement must be 2x vertical movement
       // 2. Vertical drift must not exceed MAX_VERTICAL_DRIFT (prevents steep diagonal swipes)
