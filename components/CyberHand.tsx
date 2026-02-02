@@ -38,7 +38,8 @@ export const CyberHand: React.FC = () => {
               setIsLoaded(true);
             } catch (initErr) {
               console.error("Error initializing hand landmarker:", initErr);
-              setError("Failed to initialize hand tracking");
+              const message = initErr instanceof Error ? initErr.message : "Failed to initialize hand tracking";
+              setError(message);
             }
           }, { once: true });
         }
@@ -210,8 +211,11 @@ export const CyberHand: React.FC = () => {
         </div>
       )}
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center text-red-400 text-xs font-mono">
+        <div className="absolute inset-0 flex items-center justify-center text-red-400 text-xs font-mono text-center px-4">
           {error}
+          <div className="mt-2 text-[10px] text-red-300">
+            Verifique se o modelo está em <span className="text-red-200">public/models/hand_landmarker.task</span>
+          </div>
         </div>
       )}
       <div className="absolute bottom-0 left-0 w-full bg-cyan-900/80 text-[10px] text-cyan-100 px-2 py-1 font-mono flex justify-between">

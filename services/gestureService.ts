@@ -2,14 +2,31 @@ import { FilesetResolver, HandLandmarker } from "@mediapipe/tasks-vision";
 
 let handLandmarker: HandLandmarker | null = null;
 
+const MODEL_PATH = "/models/hand_landmarker.task";
+
+const ensureModelAvailable = async () => {
+  try {
+    const head = await fetch(MODEL_PATH, { method: "HEAD" });
+    if (head.ok) return;
+  } catch {
+    // Ignore and fallback to GET
+  }
+
+  const res = await fetch(MODEL_PATH, { method: "GET" });
+  if (!res.ok) {
+    throw new Error(`Model file not found at ${MODEL_PATH}`);
+  }
+};
+
 export const initializeHandLandmarker = async () => {
+  await ensureModelAvailable();
   const vision = await FilesetResolver.forVisionTasks(
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
   );
   
   handLandmarker = await HandLandmarker.createFromOptions(vision, {
     baseOptions: {
-      modelAssetPath: `/models/hand_landmarker.task`,
+      modelAssetPath: MODEL_PATH,
       delegate: "GPU"
     },
     runningMode: "VIDEO",
