@@ -1,50 +1,33 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-br">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Neon Runner: Cyber Hand</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="description" content="Neon Runner: Cyber Hand - Uma experiência futurista controlada por gestos.">
+    <meta name="author" content="Matheus Siqueira">
+    <title>Neon Runner: Cyber Hand | Matheus Siqueira</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/index.css">
+    
     <style>
       body {
-        margin: 0;
         background-color: #050505;
-        color: white;
-        font-family: 'Segoe UI', 'Tahoma', 'Helvetica', sans-serif;
-        overflow: hidden;
-      }
-      .font-display {
-        font-family: 'Impact', 'Segoe UI', sans-serif;
-      }
-      /* Custom scrollbar for webkit */
-      ::-webkit-scrollbar {
-        width: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #111;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #00f3ff;
-        border-radius: 4px;
+        overscroll-behavior: none;
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@^19.2.4",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "three": "https://esm.sh/three@^0.182.0",
-    "@react-three/fiber": "https://esm.sh/@react-three/fiber@^9.5.0",
-    "zustand": "https://esm.sh/zustand@^5.0.11",
-    "@mediapipe/tasks-vision": "https://esm.sh/@mediapipe/tasks-vision@^0.10.32"
-  }
-}
-</script>
-<link rel="stylesheet" href="/index.css">
-</head>
+  </head>
   <body>
     <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <!-- Script Principal -->
+    <script type="module" src="/index.tsx"></script>
+    
+    <!-- Overlay Visual Effects -->
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+  </body>
 </html>

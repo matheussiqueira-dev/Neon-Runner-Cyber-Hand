@@ -14,6 +14,7 @@ export enum Lane {
 export interface GameState {
   status: GameStatus;
   score: number;
+  highScore: number;
   speed: number;
   lane: Lane;
   isJumping: boolean;

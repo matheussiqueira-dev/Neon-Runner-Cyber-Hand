@@ -4,16 +4,23 @@ import { GameStatus, GameState, Lane } from './types';
 export const useGameStore = create<GameState>((set) => ({
   status: GameStatus.IDLE,
   score: 0,
+  highScore: parseInt(localStorage.getItem('neon_runner_highscore') || '0'),
   speed: 10,
   lane: Lane.CENTER,
   isJumping: false,
   isSliding: false,
 
   setStatus: (status) => set({ status }),
-  addScore: (amount) => set((state) => ({ score: state.score + amount })),
+  addScore: (amount) => set((state) => {
+    const newScore = state.score + amount;
+    if (newScore > state.highScore) {
+      localStorage.setItem('neon_runner_highscore', newScore.toString());
+      return { score: newScore, highScore: newScore };
+    }
+    return { score: newScore };
+  }),
   
   setLane: (lane) => set((state) => {
-    // Clamp lane between -1 and 1
     if (lane < -1) return { lane: -1 };
     if (lane > 1) return { lane: 1 };
     return { lane };
@@ -22,7 +29,7 @@ export const useGameStore = create<GameState>((set) => ({
   setJumping: (isJumping) => set({ isJumping }),
   setSliding: (isSliding) => set({ isSliding }),
 
-  increaseSpeed: () => set((state) => ({ speed: Math.min(state.speed + 0.01, 18) })), // Gradual increase with cap
+  increaseSpeed: () => set((state) => ({ speed: Math.min(state.speed + 0.1, 20) })), 
 
   resetGame: () => set({
     status: GameStatus.PLAYING,

@@ -1,7 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useGameStore } from '../store';
 import { initializeHandLandmarker, detectHands, analyzeGesture, GestureType } from '../services/gestureService';
 import { GameStatus } from '../types';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Camera, ShieldAlert, Cpu } from 'lucide-react';
 
 export const CyberHand: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -10,218 +12,224 @@ export const CyberHand: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [lastGesture, setLastGesture] = useState<string>("");
   const requestRef = useRef<number>();
-  const gestureTimeoutRef = useRef<number | null>(null);
-  const lastDetectTimeRef = useRef(0);
-  const lastResultsRef = useRef<any[] | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  
-  const DETECTION_INTERVAL_MS = 40; // ~25 FPS for detection
+
+  const DETECTION_INTERVAL_MS = 33; // ~30 FPS
+
+  const handleGestureRecognition = useCallback((gesture: GestureType) => {
+    if (gesture === GestureType.NONE) return;
+
+    setLastGesture(gesture);
+    setTimeout(() => setLastGesture(""), 1000);
+
+    const state = useGameStore.getState();
+    if (state.status !== GameStatus.PLAYING) return;
+
+    switch (gesture) {
+      case GestureType.SWIPE_LEFT:
+        state.setLane(state.lane - 1);
+        break;
+      case GestureType.SWIPE_RIGHT:
+        state.setLane(state.lane + 1);
+        break;
+      case GestureType.JUMP:
+        if (!state.isJumping) state.setJumping(true);
+        break;
+      case GestureType.SLIDE:
+        if (!state.isSliding) state.setSliding(true);
+        break;
+    }
+  }, []);
 
   useEffect(() => {
-    const setupCamera = async () => {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setError("Camera not supported/permitted");
-        return;
-      }
-
+    const setup = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" }
+          video: { width: 640, height: 480, frameRate: 30 }
         });
-        
+
         if (videoRef.current) {
           streamRef.current = stream;
           videoRef.current.srcObject = stream;
-          videoRef.current.addEventListener('loadeddata', async () => {
-            try {
-              await initializeHandLandmarker();
-              setIsLoaded(true);
-            } catch (initErr) {
-              console.error("Error initializing hand landmarker:", initErr);
-              const message = initErr instanceof Error ? initErr.message : "Failed to initialize hand tracking";
-              setError(message);
-            }
-          }, { once: true });
+          videoRef.current.onloadeddata = async () => {
+            await initializeHandLandmarker();
+            setIsLoaded(true);
+          };
         }
       } catch (err) {
-        console.error("Error accessing camera:", err);
-        setError("Camera access denied");
+        setError("CAMERA_ACCESS_DENIED: VERIFY PERMISSIONS");
       }
     };
 
-    setupCamera();
-
+    setup();
     return () => {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
-      if (gestureTimeoutRef.current) window.clearTimeout(gestureTimeoutRef.current);
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
+      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
     };
   }, []);
 
-  const drawCyberHand = (ctx: CanvasRenderingContext2D, landmarks: any[]) => {
+  const drawSkel = (ctx: CanvasRenderingContext2D, landmarks: any[]) => {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    
-    if (!landmarks || landmarks.length === 0) return;
+    if (!landmarks?.length) return;
 
     const hand = landmarks[0];
     const connections = [
-      [0, 1], [1, 2], [2, 3], [3, 4], // Thumb
-      [0, 5], [5, 6], [6, 7], [7, 8], // Index
-      [0, 9], [9, 10], [10, 11], [11, 12], // Middle
-      [0, 13], [13, 14], [14, 15], [15, 16], // Ring
-      [0, 17], [17, 18], [18, 19], [19, 20], // Pinky
-      [5, 9], [9, 13], [13, 17] // Palm
+      [0, 1, 2, 3, 4], [0, 5, 6, 7, 8], [5, 9, 10, 11, 12], [9, 13, 14, 15, 16], [13, 17, 18, 19, 20], [0, 17]
     ];
 
-    // Style
+    ctx.strokeStyle = '#00f3ff';
+    ctx.lineWidth = 4;
     ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    // Draw Connections (Neon Lines)
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#00f3ff'; // Neon Cyan
-    ctx.shadowBlur = 10;
+    ctx.shadowBlur = 15;
     ctx.shadowColor = '#00f3ff';
 
-    connections.forEach(([start, end]) => {
-      const p1 = hand[start];
-      const p2 = hand[end];
-      
-      // Mirror X because webcam is mirrored
-      const x1 = (1 - p1.x) * ctx.canvas.width;
-      const y1 = p1.y * ctx.canvas.height;
-      const x2 = (1 - p2.x) * ctx.canvas.width;
-      const y2 = p2.y * ctx.canvas.height;
-
+    connections.forEach(path => {
       ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
+      path.forEach((idx, i) => {
+        const x = (1 - hand[idx].x) * ctx.canvas.width;
+        const y = hand[idx].y * ctx.canvas.height;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
       ctx.stroke();
     });
 
-    // Draw Joints (Glowing Nodes)
-    hand.forEach((point: any) => {
-        const x = (1 - point.x) * ctx.canvas.width;
-        const y = point.y * ctx.canvas.height;
-        
-        ctx.beginPath();
-        ctx.arc(x, y, 5, 0, 2 * Math.PI);
-        ctx.fillStyle = '#ff00ff'; // Neon Magenta
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = '#ff00ff';
-        ctx.fill();
-        
-        // Inner white core
-        ctx.beginPath();
-        ctx.arc(x, y, 2, 0, 2 * Math.PI);
-        ctx.fillStyle = '#ffffff';
-        ctx.shadowBlur = 0;
-        ctx.fill();
+    hand.forEach((p: any) => {
+      const x = (1 - p.x) * ctx.canvas.width;
+      const y = p.y * ctx.canvas.height;
+      ctx.fillStyle = '#ff00ff';
+      ctx.shadowColor = '#ff00ff';
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
     });
   };
 
-  const tick = (time: number) => {
+  const loop = (time: number) => {
     if (videoRef.current && canvasRef.current && isLoaded) {
-      if (videoRef.current.readyState >= 2 && (time - lastDetectTimeRef.current) >= DETECTION_INTERVAL_MS) {
-        const results = detectHands(videoRef.current, Date.now());
-        lastDetectTimeRef.current = time;
-        lastResultsRef.current = results && results.landmarks.length > 0 ? results.landmarks : null;
-      }
-      
+      const results = detectHands(videoRef.current, Date.now());
       const ctx = canvasRef.current.getContext('2d');
-      if (ctx) {
-        if (lastResultsRef.current && lastResultsRef.current.length > 0) {
-           drawCyberHand(ctx, lastResultsRef.current);
-           
-           // CRITICAL FIX: Access store state directly to avoid stale closures in loop
-           const currentStatus = useGameStore.getState().status;
-           
-           if (currentStatus === GameStatus.PLAYING) {
-             const gesture = analyzeGesture(lastResultsRef.current);
-             
-             if (gesture !== GestureType.NONE) {
-                 setLastGesture(gesture);
-                 // Clear visual feedback after a moment
-                 if (gestureTimeoutRef.current) window.clearTimeout(gestureTimeoutRef.current);
-                 gestureTimeoutRef.current = window.setTimeout(() => setLastGesture(""), 800);
-
-                 const state = useGameStore.getState();
-                 
-                 switch(gesture) {
-                    case GestureType.SWIPE_LEFT:
-                        if (state.lane > -1) state.setLane(state.lane - 1);
-                        break;
-                    case GestureType.SWIPE_RIGHT:
-                        if (state.lane < 1) state.setLane(state.lane + 1);
-                        break;
-                    case GestureType.JUMP:
-                        if (!state.isJumping) state.setJumping(true);
-                        break;
-                    case GestureType.SLIDE:
-                        if (!state.isSliding) state.setSliding(true);
-                        break;
-                 }
-             }
-           }
-        } else {
-           ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-        }
+      if (ctx && results?.landmarks?.length) {
+        drawSkel(ctx, results.landmarks);
+        const gesture = analyzeGesture(results.landmarks);
+        handleGestureRecognition(gesture);
+      } else if (ctx) {
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
       }
     }
-    requestRef.current = requestAnimationFrame(tick);
+    requestRef.current = requestAnimationFrame(loop);
   };
 
   useEffect(() => {
-    requestRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
-    };
-  }, [isLoaded]); // Dependencies reduced to prevent loop restart
+    if (isLoaded) requestRef.current = requestAnimationFrame(loop);
+  }, [isLoaded]);
 
   return (
-    <div className="absolute top-4 right-4 z-50 w-[640px] h-[480px] bg-black/50 border border-cyan-500 rounded-lg overflow-hidden backdrop-blur-sm shadow-[0_0_15px_rgba(0,243,255,0.3)] origin-top-right transform scale-75 md:scale-100">
-      {/* Hidden Video Feed */}
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        className="absolute top-0 left-0 w-full h-full object-cover opacity-20 transform scale-x-[-1]" 
-      />
-      {/* Visualizer Canvas */}
-      <canvas
-        ref={canvasRef}
-        width={640}
-        height={480}
-        className="absolute top-0 left-0 w-full h-full object-contain"
-      />
-      
-      {/* Gesture Feedback Overlay */}
-      {lastGesture && (
-          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-              <span className="text-4xl font-black text-yellow-400 font-display animate-ping opacity-75">{lastGesture}</span>
-          </div>
+    <div className="hand-preview-container glass neon-border-cyan">
+      <video ref={videoRef} autoPlay playsInline muted className="camera-feed" />
+      <canvas ref={canvasRef} width={640} height={480} className="skeleton-overlay" />
+
+      <div className="hand-status-bar">
+        <div className="status-label">
+          <Cpu size={12} className={isLoaded ? "icon-online" : ""} />
+          <span>{isLoaded ? "NEURAL_LINK: ACTIVE" : "SYNCING_SENSORS..."}</span>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {lastGesture && (
+          <motion.div
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1.2, opacity: 1 }}
+            exit={{ scale: 2, opacity: 0 }}
+            className="gesture-popup"
+          >
+            {lastGesture}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {error && (
+        <div className="hand-error-overlay">
+          <ShieldAlert size={32} color="var(--color-red)" />
+          <p>{error}</p>
+        </div>
       )}
 
-      {!isLoaded && !error && (
-        <div className="absolute inset-0 flex items-center justify-center text-cyan-400 text-xs font-mono animate-pulse">
-          INIT_SENSORS...
-        </div>
-      )}
-      {error && (
-        <div className="absolute inset-0 flex items-center justify-center text-red-400 text-xs font-mono text-center px-4">
-          {error}
-          <div className="mt-2 text-[10px] text-red-300">
-            Verifique se o modelo está em <span className="text-red-200">public/models/hand_landmarker.task</span>
-          </div>
-        </div>
-      )}
-      <div className="absolute bottom-0 left-0 w-full bg-cyan-900/80 text-[10px] text-cyan-100 px-2 py-1 font-mono flex justify-between">
-        <span>HAND_TRACKING</span>
-        <span className={isLoaded ? "text-green-400" : "text-red-400"}>{isLoaded ? "ONLINE" : "OFFLINE"}</span>
-      </div>
+      <style>{`
+        .hand-preview-container {
+          position: absolute;
+          top: 1.5rem;
+          right: 1.5rem;
+          width: 280px;
+          height: 210px;
+          z-index: 60;
+          overflow: hidden;
+          background: #000;
+          border-radius: 8px;
+        }
+        .camera-feed {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          opacity: 0.4;
+          transform: scaleX(-1);
+        }
+        .skeleton-overlay {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+        }
+        .hand-status-bar {
+          position: absolute;
+          bottom: 0;
+          left: 0;
+          width: 100%;
+          background: rgba(0, 243, 255, 0.2);
+          padding: 4px 8px;
+          font-family: var(--font-mono);
+          font-size: 0.6rem;
+          color: var(--color-cyan);
+        }
+        .status-label { display: flex; align-items: center; gap: 6px; }
+        .icon-online { color: #22c55e; filter: drop-shadow(0 0 5px #22c55e); }
+        
+        .gesture-popup {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          font-family: var(--font-display);
+          font-size: 2rem;
+          color: var(--color-yellow);
+          text-shadow: 0 0 15px var(--color-yellow);
+          pointer-events: none;
+        }
+
+        .hand-error-overlay {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0,0,0,0.8);
+          padding: 1rem;
+          text-align: center;
+          font-family: var(--font-mono);
+          font-size: 0.7rem;
+          color: var(--color-red);
+        }
+
+        @media (max-width: 768px) {
+          .hand-preview-container {
+            width: 180px;
+            height: 135px;
+            top: 0.5rem;
+            right: 0.5rem;
+          }
+        }
+      `}</style>
     </div>
   );
 };

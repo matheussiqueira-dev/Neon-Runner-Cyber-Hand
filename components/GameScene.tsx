@@ -1,189 +1,172 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { EffectComposer, Bloom, ChromaticAberration, Noise, Vignette } from '@react-three/postprocessing';
+import { Stars, Float } from '@react-three/drei';
 import { Player } from './Player';
 import { FloorSegment, Obstacle, Coin } from './WorldObjects';
 import { useGameStore } from '../store';
 import { GameStatus, ObstacleData, CoinData, Lane } from '../types';
 import * as THREE from 'three';
 
-const SEGMENT_LENGTH = 20;
-const VISIBLE_SEGMENTS = 6;
+const SEGMENT_LENGTH = 30;
+const VISIBLE_SEGMENTS = 8;
 
 export const GameScene: React.FC = () => {
-  const status = useGameStore(s => s.status);
-  const speed = useGameStore(s => s.speed);
-  const score = useGameStore(s => s.score);
-  const addScore = useGameStore(s => s.addScore);
-  const setStatus = useGameStore(s => s.setStatus);
-  const increaseSpeed = useGameStore(s => s.increaseSpeed);
-  const isJumping = useGameStore(s => s.isJumping);
-  const isSliding = useGameStore(s => s.isSliding);
-  const playerLane = useGameStore(s => s.lane);
-  
-  // World State
-  const [segments, setSegments] = useState<number[]>([0, 1, 2, 3, 4, 5]);
-  const [obstacles, setObstacles] = useState<ObstacleData[]>([]);
-  const [coins, setCoins] = useState<CoinData[]>([]);
-  
-  // Refs for collision optimization
-  const playerZ = useRef(0);
-  const speedRef = useRef(speed);
-  
-  // Sync speed ref
-  useEffect(() => { speedRef.current = speed; }, [speed]);
+    const status = useGameStore(s => s.status);
+    const speed = useGameStore(s => s.speed);
+    const score = useGameStore(s => s.score);
+    const addScore = useGameStore(s => s.addScore);
+    const setStatus = useGameStore(s => s.setStatus);
+    const increaseSpeed = useGameStore(s => s.increaseSpeed);
+    const isJumping = useGameStore(s => s.isJumping);
+    const isSliding = useGameStore(s => s.isSliding);
+    const playerLane = useGameStore(s => s.lane);
 
-  // Reset Logic
-  useEffect(() => {
-    if (status === GameStatus.PLAYING && score === 0) {
-        playerZ.current = 0;
-        if (worldRef.current) worldRef.current.position.set(0, 0, 0);
-        setSegments([0, 1, 2, 3, 4, 5]);
-        setObstacles([]);
-        setCoins([]);
-    }
-  }, [status, score]);
+    // World State
+    const [segments, setSegments] = useState<number[]>(Array.from({ length: VISIBLE_SEGMENTS }, (_, i) => i));
+    const [obstacles, setObstacles] = useState<ObstacleData[]>([]);
+    const [coins, setCoins] = useState<CoinData[]>([]);
 
-  // Spawning Logic
-  const spawnObjects = (segmentIndex: number) => {
-    const zBase = segmentIndex * SEGMENT_LENGTH;
-    const newObstacles: ObstacleData[] = [];
-    const newCoins: CoinData[] = [];
+    const worldRef = useRef<THREE.Group>(null);
+    const speedRef = useRef(speed);
 
-    // Simple procedural generation
-    // Random chance for obstacle
-    if (Math.random() > 0.35 && segmentIndex > 2) { // Don't spawn at start
-        const lane = Math.floor(Math.random() * 3) - 1; // -1, 0, 1
-        const roll = Math.random();
-        const type: ObstacleData["type"] = roll > 0.85 ? 'pit' : (roll > 0.7 ? 'tall' : 'wall');
-        newObstacles.push({
-            id: `obs-${segmentIndex}-${Date.now()}`,
-            z: -(zBase + Math.random() * SEGMENT_LENGTH),
-            lane: lane as Lane,
-            type: type
-        });
-    }
+    useEffect(() => { speedRef.current = speed; }, [speed]);
 
-    // Coins in rows
-    if (Math.random() > 0.4 && segmentIndex > 1) {
-        const lane = Math.floor(Math.random() * 3) - 1;
-        // Avoid placing coin exactly inside obstacle (simple check)
-        const hasObstacle = newObstacles.some(o => o.lane === lane);
-        if (!hasObstacle) {
-            for(let i=0; i<3; i++) {
-                newCoins.push({
-                    id: `coin-${segmentIndex}-${i}-${Date.now()}`,
-                    z: -(zBase + 5 + (i * 2)),
-                    lane: lane as Lane
-                });
+    // Reset Logic
+    useEffect(() => {
+        if (status === GameStatus.PLAYING && score === 0) {
+            if (worldRef.current) worldRef.current.position.set(0, 0, 0);
+            setSegments(Array.from({ length: VISIBLE_SEGMENTS }, (_, i) => i));
+            setObstacles([]);
+            setCoins([]);
+        }
+    }, [status, score]);
+
+    const spawnObjects = (segmentIndex: number) => {
+        const zBase = segmentIndex * SEGMENT_LENGTH;
+        const newObstacles: ObstacleData[] = [];
+        const newCoins: CoinData[] = [];
+
+        // Increase difficulty by increasing spawn rate
+        const spawnChance = Math.min(0.2 + (segmentIndex * 0.005), 0.5);
+
+        if (Math.random() < spawnChance && segmentIndex > 2) {
+            const lane = Math.floor(Math.random() * 3) - 1;
+            const roll = Math.random();
+            const type: ObstacleData["type"] = roll > 0.8 ? 'pit' : (roll > 0.5 ? 'tall' : 'wall');
+            newObstacles.push({
+                id: `obs-${segmentIndex}-${Date.now()}`,
+                z: -(zBase + Math.random() * (SEGMENT_LENGTH - 5)),
+                lane: lane as Lane,
+                type: type
+            });
+        }
+
+        if (Math.random() > 0.3 && segmentIndex > 1) {
+            const lane = Math.floor(Math.random() * 3) - 1;
+            const hasObstacle = newObstacles.some(o => o.lane === lane);
+            if (!hasObstacle) {
+                for (let i = 0; i < 5; i++) {
+                    newCoins.push({
+                        id: `coin-${segmentIndex}-${i}-${Date.now()}`,
+                        z: -(zBase + 5 + (i * 3)),
+                        lane: lane as Lane
+                    });
+                }
             }
         }
-    }
 
-    return { newObstacles, newCoins };
-  };
+        return { newObstacles, newCoins };
+    };
 
-  // REVISED APPROACH: Player is static (0,0,0). World Group moves +Z.
-  // Actually, standard R3F runner: Everything moves towards camera.
-  const worldRef = useRef<THREE.Group>(null);
-  
-  useFrame((state, delta) => {
-      if (status !== GameStatus.PLAYING || !worldRef.current) return;
-      
-      const moveAmount = speedRef.current * delta;
-      worldRef.current.position.z += moveAmount;
+    useFrame((state, delta) => {
+        if (status !== GameStatus.PLAYING || !worldRef.current) return;
 
-      const currentWorldZ = worldRef.current.position.z;
+        const moveAmount = speedRef.current * delta;
+        worldRef.current.position.z += moveAmount;
 
-      // 1. Check Collisions
-      // Player is at (playerLane * 2.5, Y, 0)
-      // Obstacle is at (obs.lane * 2.5, Y, obs.z + currentWorldZ)
-      // Because obstacle.z is negative (placed ahead), adding currentWorldZ brings it close to 0.
-      
-      // Check Obstacles
-      obstacles.forEach(obs => {
-         const obsWorldZ = obs.z + currentWorldZ;
-         
-         // Collision Z range (approx depth of box is 1 or 2)
-         if (obsWorldZ > -1 && obsWorldZ < 1) {
-             if (obs.lane === playerLane) {
-                 // Check vertical collision (Jump over pits?)
-                 if (obs.type === 'pit') {
-                      if (!isJumping) setStatus(GameStatus.GAME_OVER);
-                 } else if (obs.type === 'tall') {
-                      if (!isSliding) setStatus(GameStatus.GAME_OVER);
-                 } else {
-                     // Wall - can be avoided by jumping
-                     if (!isJumping) setStatus(GameStatus.GAME_OVER);
-                 }
-             }
-         }
-      });
+        const currentWorldZ = worldRef.current.position.z;
 
-      // Check Coins
-      const remainingCoins: CoinData[] = [];
-      let gathered = 0;
-      coins.forEach(coin => {
-          const coinWorldZ = coin.z + currentWorldZ;
-          let collected = false;
-          if (coinWorldZ > -1 && coinWorldZ < 1 && coin.lane === playerLane) {
-              collected = true;
-              gathered += 10;
-          }
-          
-          if (!collected) {
-              remainingCoins.push(coin);
-          }
-      });
-      
-      if (gathered > 0) {
-          addScore(gathered);
-          setCoins(remainingCoins);
-      }
+        // Obstacle Collisions
+        obstacles.forEach(obs => {
+            const obsWorldZ = obs.z + currentWorldZ;
+            if (obsWorldZ > -0.8 && obsWorldZ < 0.8 && obs.lane === playerLane) {
+                if (obs.type === 'pit' && !isJumping) setStatus(GameStatus.GAME_OVER);
+                else if (obs.type === 'tall' && !isSliding) setStatus(GameStatus.GAME_OVER);
+                else if (obs.type === 'wall' && !isJumping) setStatus(GameStatus.GAME_OVER);
+            }
+        });
 
-      // 2. Infinite Generation
-      // Calculate which segment index we are currently "over"
-      // currentWorldZ starts at 0 and increases.
-      // Segment 0 was at 0 to -20. When worldZ is 20, segment 0 is at 20 to 0 (behind us).
-      
-      const frontSegmentIndex = Math.floor(currentWorldZ / SEGMENT_LENGTH);
-      // We want to ensure we have segments up to frontSegmentIndex + VISIBLE_SEGMENTS
-      
-      const lastGeneratedIndex = segments[segments.length - 1];
-      if (lastGeneratedIndex < frontSegmentIndex + VISIBLE_SEGMENTS) {
-          const nextIndex = lastGeneratedIndex + 1;
-          const { newObstacles, newCoins } = spawnObjects(nextIndex);
-          
-          setSegments(prev => [...prev.slice(1), nextIndex]); // Remove old, add new
-          setObstacles(prev => [...prev.filter(o => o.z + currentWorldZ < 10), ...newObstacles]); // Cleanup old
-          setCoins(prev => [...prev.filter(c => c.z + currentWorldZ < 10), ...newCoins]);
-          
-          // Difficulty curve
-          if (nextIndex % 5 === 0) increaseSpeed();
-          addScore(1); // Distance score
-      }
-  });
+        // Coin Collisions
+        const remainingCoins: CoinData[] = [];
+        let gathered = 0;
+        coins.forEach(coin => {
+            const coinWorldZ = coin.z + currentWorldZ;
+            if (coinWorldZ > -1.2 && coinWorldZ < 1.2 && coin.lane === playerLane && Math.abs(state.camera.position.y - 1) < 2) {
+                gathered += 50;
+            } else {
+                remainingCoins.push(coin);
+            }
+        });
 
-  return (
-    <>
-      <directionalLight position={[10, 20, 5]} intensity={1.5} castShadow />
-      <ambientLight intensity={0.5} />
-      
-      <Player />
+        if (gathered > 0) {
+            addScore(gathered);
+            setCoins(remainingCoins);
+        }
 
-      <group ref={worldRef}>
-        {segments.map(index => (
-            <FloorSegment key={index} zPos={-(index * SEGMENT_LENGTH) - (SEGMENT_LENGTH/2)} />
-        ))}
-        {obstacles.map(obs => (
-            <Obstacle key={obs.id} data={obs} />
-        ))}
-        {coins.map(coin => (
-            <Coin key={coin.id} data={coin} />
-        ))}
-      </group>
+        // Generation
+        const frontSegmentIndex = Math.floor(currentWorldZ / SEGMENT_LENGTH);
+        const lastGeneratedIndex = segments[segments.length - 1];
 
-      {/* Fog for distance hiding */}
-      <fog attach="fog" args={['#050505', 10, 60]} />
-    </>
-  );
+        if (lastGeneratedIndex < frontSegmentIndex + VISIBLE_SEGMENTS) {
+            const nextIndex = lastGeneratedIndex + 1;
+            const { newObstacles, newCoins } = spawnObjects(nextIndex);
+
+            setSegments(prev => [...prev.slice(1), nextIndex]);
+            setObstacles(prev => [...prev.filter(o => o.z + currentWorldZ < 20), ...newObstacles]);
+            setCoins(prev => [...prev.filter(c => c.z + currentWorldZ < 20), ...newCoins]);
+
+            if (nextIndex % 3 === 0) increaseSpeed();
+            addScore(10);
+        }
+    });
+
+    return (
+        <>
+            <color attach="background" args={['#020205']} />
+            <fog attach="fog" args={['#020205', 20, 90]} />
+
+            <ambientLight intensity={0.2} />
+            <pointLight position={[0, 10, -10]} intensity={2} color="#00f3ff" />
+            <pointLight position={[0, 5, 5]} intensity={1} color="#ff00ff" />
+
+            <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+
+            <Player />
+
+            <group ref={worldRef}>
+                {segments.map(index => (
+                    <FloorSegment key={index} zPos={-(index * SEGMENT_LENGTH) - (SEGMENT_LENGTH / 2)} />
+                ))}
+                {obstacles.map(obs => (
+                    <Obstacle key={obs.id} data={obs} />
+                ))}
+                {coins.map(coin => (
+                    <Coin key={coin.id} data={coin} />
+                ))}
+            </group>
+
+            <EffectComposer disableNormalPass>
+                <Bloom
+                    luminanceThreshold={1.0}
+                    mipmapBlur
+                    intensity={1.5}
+                    radius={0.4}
+                />
+                <ChromaticAberration offset={new THREE.Vector2(0.001, 0.001)} />
+                <Noise opacity={0.05} />
+                <Vignette eskil={false} offset={0.1} darkness={1.1} />
+            </EffectComposer>
+        </>
+    );
 };
